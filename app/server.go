@@ -1,7 +1,9 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 )
@@ -33,16 +35,20 @@ func main() {
 func handleClient(conn net.Conn) {
 	defer conn.Close()
 
-	buf := make([]byte, 1024)
+	for {
+		buf := make([]byte, 1024)
 
-	n, err := conn.Read(buf)
-	if err != nil {
-		return
+		_, err := conn.Read(buf)
+		if errors.Is(err, io.EOF) {
+			fmt.Println("Client closed the connections:", conn.RemoteAddr())
+			break
+		} else if err != nil {
+			fmt.Println("Error while reading the message")
+		}
+
+		str := "+PONG\r\n"
+		res := []byte(str)
+		conn.Write(res)
+
 	}
-
-	fmt.Println("Received data ", buf[:n])
-
-	str := "+PONG\r\n"
-	res := []byte(str)
-	conn.Write(res)
 }

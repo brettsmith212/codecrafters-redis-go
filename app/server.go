@@ -19,4 +19,35 @@ func main() {
 		fmt.Println("Error accepting connection: ", err.Error())
 		os.Exit(1)
 	}
+
+	defer l.Close()
+
+	fmt.Println("Server listening on port 6379")
+
+	for {
+		conn, err := l.Accept()
+		if err != nil {
+			fmt.Println("Error: ", err)
+			continue
+		}
+
+		handleClient(conn)
+	}
+}
+
+func handleClient(conn net.Conn) {
+	defer conn.Close()
+
+	buf := make([]byte, 1024)
+
+	n, err := conn.Read(buf)
+	if err != nil {
+		return
+	}
+
+	fmt.Println("Received data ", buf[:n])
+
+	str := "+PONG\r\n"
+	res := []byte(str)
+	conn.Write(res)
 }

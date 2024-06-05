@@ -14,17 +14,20 @@ func main() {
 		fmt.Println("Failed to bind to port 6379")
 		os.Exit(1)
 	}
-	conn, err := l.Accept()
-	if err != nil {
-		fmt.Println("Error accepting connection: ", err.Error())
-		os.Exit(1)
-	}
 
 	defer l.Close()
 
 	fmt.Println("Server listening on port 6379")
 
-	handleClient(conn)
+	for {
+		conn, err := l.Accept()
+		if err != nil {
+			fmt.Println("Error accepting connection: ", err.Error())
+			os.Exit(1)
+		}
+
+		handleClient(conn)
+	}
 }
 
 func handleClient(conn net.Conn) {

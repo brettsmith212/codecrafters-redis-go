@@ -87,7 +87,7 @@ func processInput(input []string, conn net.Conn, table map[string]string) {
 			key := input[1]
 			value := input[2]
 			table[key] = value
-			conn.Write([]byte(fmt.Sprintf("+OK\r\n", key, value)))
+			conn.Write([]byte(fmt.Sprintf("+OK\r\n")))
 		}
 	default:
 		conn.Write([]byte(fmt.Sprintf("+Recieved unknown command: %s\r\n", command)))

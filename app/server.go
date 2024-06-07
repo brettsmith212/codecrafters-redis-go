@@ -6,8 +6,15 @@ import (
 	"io"
 	"net"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 )
+
+type ExpirationTime struct {
+	Start    int64
+	Duration int64
+}
 
 func main() {
 	l, err := net.Listen("tcp", "0.0.0.0:6379")
@@ -20,6 +27,7 @@ func main() {
 
 	fmt.Println("Server listening on port 6379")
 	table := make(map[string]string)
+	expirationTable := make(map[string]ExpirationTime)
 
 	for {
 		conn, err := l.Accept()
@@ -28,11 +36,11 @@ func main() {
 			os.Exit(1)
 		}
 
-		go handleClient(conn, table)
+		go handleClient(conn, table, expirationTable)
 	}
 }
 
-func handleClient(conn net.Conn, table map[string]string) {
+func handleClient(conn net.Conn, table map[string]string, expirationTable map[string]ExpirationTime) {
 	defer conn.Close()
 
 	buf := make([]byte, 1024)
@@ -49,15 +57,16 @@ func handleClient(conn net.Conn, table map[string]string) {
 		buf = buf[:n]
 
 		input, err := parseInput(buf)
+		fmt.Println("INPUT: ", input)
 		if err != nil {
 			fmt.Println("Parse input error")
 		}
 
-		processInput(input, conn, table)
+		processInput(input, conn, table, expirationTable)
 	}
 }
 
-func processInput(input []string, conn net.Conn, table map[string]string) {
+func processInput(input []string, conn net.Conn, table map[string]string, expirationTable map[string]ExpirationTime) {
 	command := strings.ToUpper(input[0])
 
 	switch command {
@@ -73,21 +82,48 @@ func processInput(input []string, conn net.Conn, table map[string]string) {
 		if len(input) == 1 {
 			conn.Write([]byte("+Get command must include key\r\n"))
 		} else {
-			if val, ok := table[input[1]]; ok {
-				length := len(val)
-				conn.Write([]byte(fmt.Sprintf("$%d\r\n%s\r\n", length, val)))
+			key := input[1]
+			if val, ok := table[key]; ok {
+				// Check if expired
+				expired := false
+				if expirationTime, ok := expirationTable[key]; ok {
+					currentTimeMilliSeconds := time.Now().UnixNano() / 1000000
+					diff := currentTimeMilliSeconds - expirationTime.Start
+					if diff > expirationTime.Duration {
+						expired = true
+					}
+				}
+				if expired {
+					conn.Write([]byte("$-1\r\n"))
+				} else {
+					length := len(val)
+					conn.Write([]byte(fmt.Sprintf("$%d\r\n%s\r\n", length, val)))
+				}
 			} else {
 				conn.Write([]byte("+No value found\r\n"))
 			}
 		}
 	case "SET":
-		if len(input) != 3 {
+		if len(input) < 3 {
 			conn.Write([]byte("+Set command must include key and value\r\n"))
 		} else {
 			key := input[1]
 			value := input[2]
 			table[key] = value
-			conn.Write([]byte(fmt.Sprintf("+OK\r\n")))
+			if len(input) == 3 {
+				conn.Write([]byte(fmt.Sprintf("+OK\r\n")))
+			} else if len(input) == 5 && strings.ToUpper(input[3]) == "PX" {
+				currentTimeMilliSeconds := time.Now().UnixNano() / 1000000
+				duration, err := strconv.ParseInt(input[4], 10, 64)
+				fmt.Println("DURATION: ", duration)
+				if err != nil {
+					conn.Write([]byte("+Could not process px duration provided\r\n"))
+				}
+				expirationTable[key] = ExpirationTime{currentTimeMilliSeconds, duration}
+				conn.Write([]byte(fmt.Sprintf("+OK\r\n")))
+			} else {
+				conn.Write([]byte("+Error processing SET command\r\n"))
+			}
 		}
 	default:
 		conn.Write([]byte(fmt.Sprintf("+Recieved unknown command: %s\r\n", command)))
